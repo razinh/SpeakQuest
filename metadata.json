@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Text to Talking Face Generator",
+  "description": "Convert text into a realistic, animated talking face using AI. The generated video features a close-up of a human face speaking the provided words with natural lip-sync and expressions.",
+  "requestFramePermissions": []
+}
