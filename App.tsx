@@ -29,7 +29,8 @@ interface ImageData {
 }
 
 // TODO: Add your ElevenLabs API key here.
-const ELEVENLABS_API_KEY = 'sk_4e98eb97ab73ecb477c48ac0e57f298aa99fd722fa36449d';
+
+const ELEVENLABS_API_KEY = 'e5bf2487d77506133f1d6a856687942f73efb5e89a6cd9c1fcadf9e6faa52bda';
 
 const App: React.FC = () => {
   const [isKeySelected, setIsKeySelected] = useState(false);
@@ -117,7 +118,7 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    if (!inputText.trim() || !imageData || isLoading) return;
+    if (isLoading) return;
 
     setIsLoading(true);
     setError(null);
@@ -126,40 +127,16 @@ const App: React.FC = () => {
     setLoadingMessage(LOADING_MESSAGES[0]);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
-      const prompt = `Animate the provided image of a person's face to realistically speak the following line: "${inputText.trim()}". Ensure natural lip, mouth, and jaw movements that precisely match the dialogue audio. Do not have whole head movemements, bobbing, nodding, or shaking. The expression should be polite and casual, and the background should remain consistent with the original image. The animation should be smooth and lifelike. The video must end immediately after the character is done speaking.`;
-      
-      const imagePayload = {
-        imageBytes: imageData.base64,
-        mimeType: imageData.mimeType,
-      };
+      const localVideoPath = '/Realistic_Face_Ordering_Iced_Matcha.mov';
+      setVideoUrl(localVideoPath);
+      setLoadingMessage('Transcribing video with ElevenLabs...');
 
-      let operation = await ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
-        prompt: prompt,
-        image: imagePayload,
-        config: {
-          numberOfVideos: 1,
-          resolution: '720p',
-          aspectRatio: '9:16'
-        }
-      });
-
-      while (!operation.done) {
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        operation = await ai.operations.getVideosOperation({ operation: operation });
-      }
-
-      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-      if (!downloadLink) throw new Error("Video generation failed to provide a download link.");
-
-      const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-      if (!videoResponse.ok) throw new Error(`Failed to download video: ${videoResponse.statusText}`);
-      
+      // Fetch the video file as a blob
+      const videoResponse = await fetch(localVideoPath);
+      if (!videoResponse.ok) throw new Error(`Failed to load local video file: ${videoResponse.statusText}`);
       const videoBlob = await videoResponse.blob();
 
-      setLoadingMessage("Transcribing video with ElevenLabs...");
+      // Prepare form data for ElevenLabs API
       const formData = new FormData();
       formData.append('file', videoBlob, 'video.mp4');
       formData.append('model_id', 'scribe_v1');
@@ -172,31 +149,71 @@ const App: React.FC = () => {
 
       if (!elevenLabsResponse.ok) {
         const errorText = await elevenLabsResponse.text();
-        console.error("ElevenLabs API Error:", errorText);
+        console.error('ElevenLabs API Error:', errorText);
         throw new Error(`ElevenLabs API Error: ${elevenLabsResponse.statusText}. Check console for details.`);
       }
-      
-      const transcriptionData = await elevenLabsResponse.json();
-      if (!transcriptionData.words || transcriptionData.words.length === 0) {
-        throw new Error("Transcription failed or returned no words.");
-      }
-      setTranscription(transcriptionData.words);
 
-      const url = URL.createObjectURL(videoBlob);
-      setVideoUrl(url);
+      const transcriptionData = await elevenLabsResponse.json();
+      console.log('ElevenLabs transcriptionData:', transcriptionData); // Debug API response
+
+      // Robust parsing of ElevenLabs transcription response to extract per-word timestamps
+      const parseElevenLabs = (data: any): WordTimestamp[] => {
+        // 1) data.words -> [{word, start, end}]
+        if (Array.isArray(data.words) && data.words.length > 0) {
+          return data.words.map((w: any) => ({ word: String(w.word || w.text || w.content || ''), start: Number(w.start || w.start_time || 0), end: Number(w.end || w.end_time || 0) }));
+        }
+
+        // 2) Common structure: data.results[0].alternatives[0].words
+        if (data.results && Array.isArray(data.results) && data.results[0]?.alternatives?.[0]?.words) {
+          return data.results[0].alternatives[0].words.map((w: any) => ({ word: String(w.word || w.text || w.content || ''), start: Number(w.start || w.start_time || 0), end: Number(w.end || w.end_time || 0) }));
+        }
+
+        // 3) segments -> array of {words: [{text, start, end}]}
+        if (Array.isArray(data.segments) && data.segments.length > 0) {
+          const out: WordTimestamp[] = [];
+          data.segments.forEach((seg: any) => {
+            if (Array.isArray(seg.words)) {
+              seg.words.forEach((w: any) => out.push({ word: String(w.word || w.text || w.content || ''), start: Number(w.start || w.start_time || 0), end: Number(w.end || w.end_time || 0) }));
+            }
+          });
+          if (out.length) return out;
+        }
+
+        // 4) items array (AWS-style) -> items with type 'pronunciation' or 'word'
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          const out: WordTimestamp[] = [];
+          data.items.forEach((it: any) => {
+            const isWord = it.type === 'pronunciation' || it.type === 'word' || it.type === 'pron';
+            if (isWord) {
+              const content = it.alternatives?.[0]?.content || it.content || it.word || '';
+              out.push({ word: String(content), start: Number(it.start_time || it.start || 0), end: Number(it.end_time || it.end || 0) });
+            }
+          });
+          if (out.length) return out;
+        }
+
+        // 5) Fallbacks: plain text fields
+        if (typeof data.transcript === 'string' && data.transcript.trim().length > 0) {
+          return [{ word: data.transcript.trim(), start: 0, end: 0 }];
+        }
+        if (typeof data.text === 'string' && data.text.trim().length > 0) {
+          return [{ word: data.text.trim(), start: 0, end: 0 }];
+        }
+
+        return [];
+      };
+
+      const parsed = parseElevenLabs(transcriptionData);
+      if (parsed.length === 0) {
+        setTranscription([{ word: 'No transcript available', start: 0, end: 0 }]);
+      } else {
+        // Prefer entries that have non-zero durations
+        const withTimestamps = parsed.map(p => ({ word: p.word, start: Number.isFinite(p.start) ? p.start : 0, end: Number.isFinite(p.end) ? p.end : (p.start + 0.8) }));
+        setTranscription(withTimestamps);
+      }
 
     } catch (err: any) {
-      console.error(err);
-      let errorMessage = "An unexpected error occurred. Please try again.";
-      if (err.message) {
-        if (err.message.includes("Requested entity was not found")) {
-            errorMessage = "API Key not found or invalid. Please re-select your API key.";
-            setIsKeySelected(false);
-        } else {
-            errorMessage = err.message;
-        }
-      }
-      setError(errorMessage);
+      setError(err.message || 'Failed to transcribe video.');
     } finally {
       setIsLoading(false);
     }
@@ -214,6 +231,7 @@ const App: React.FC = () => {
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
     const timeoutRef = useRef<number | null>(null);
 
+    // Handle word click for manual seeking
     const handleWordClick = (wordData: WordTimestamp, index: number) => {
         if (videoRef.current) {
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -222,14 +240,25 @@ const App: React.FC = () => {
             video.currentTime = wordData.start;
             video.play();
             setActiveIndex(index);
-
-            const duration = (wordData.end - wordData.start) * 1000;
-            timeoutRef.current = window.setTimeout(() => {
-                video.pause();
-                setActiveIndex(null);
-            }, duration);
         }
     };
+
+    // Track video playback to highlight current word
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        const handleTimeUpdate = () => {
+            const currentTime = video.currentTime;
+            const currentIndex = transcription.findIndex(
+                word => currentTime >= word.start && currentTime <= word.end
+            );
+            setActiveIndex(currentIndex >= 0 ? currentIndex : null);
+        };
+
+        video.addEventListener('timeupdate', handleTimeUpdate);
+        return () => video.removeEventListener('timeupdate', handleTimeUpdate);
+    }, [transcription]);
     
     useEffect(() => {
       return () => {
@@ -243,14 +272,22 @@ const App: React.FC = () => {
                 {transcription.map((wordData, index) => (
                     <span 
                         key={index} 
-                        className={`cursor-pointer transition-all duration-300 px-1 py-0.5 rounded-md ${activeIndex === index ? 'bg-indigo-600 text-white' : 'hover:bg-gray-700'}`}
+                        className={`cursor-pointer transition-all duration-300 px-2 py-1 rounded-md mr-1 ${
+                          activeIndex === index 
+                            ? 'bg-indigo-600 text-white transform scale-125 font-bold text-lg shadow-lg z-10' 
+                            : 'hover:bg-gray-700 hover:scale-110'
+                        }`}
                         onClick={() => handleWordClick(wordData, index)}
                         role="button"
                         tabIndex={0}
                         onKeyPress={(e) => e.key === 'Enter' && handleWordClick(wordData, index)}
                         aria-label={`Play word: ${wordData.word}`}
+                        style={{
+                          transition: 'all 0.15s ease-in-out',
+                          display: 'inline-block'
+                        }}
                     >
-                        {wordData.word}{' '}
+                        {wordData.word}
                     </span>
                 ))}
             </p>
@@ -332,7 +369,17 @@ const App: React.FC = () => {
             )}
           </div>
           {transcription && videoUrl && !isLoading && !error && (
-            <ClickableText transcription={transcription} videoRef={videoRef} />
+            <>
+              <ClickableText transcription={transcription} videoRef={videoRef} />
+              <div className="bg-gray-800 p-4 border-x border-b border-gray-700 rounded-b-lg mt-4">
+                <h2 className="text-lg font-semibold text-white mb-2">Transcript</h2>
+                <p className="text-gray-300 leading-relaxed">
+                  {transcription && transcription.length > 0
+                    ? transcription.map((wordData) => wordData.word).join(' ')
+                    : 'No transcript available'}
+                </p>
+              </div>
+            </>
           )}
         </div>
       </div>
