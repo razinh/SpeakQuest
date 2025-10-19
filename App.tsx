@@ -45,6 +45,13 @@ const App: React.FC = () => {
 
   const checkApiKey = useCallback(async () => {
     try {
+      // If we have an API key in the environment, use that
+      if (process.env.API_KEY || process.env.NEXT_PUBLIC_API_KEY) {
+        setIsKeySelected(true);
+        return;
+      }
+      
+      // Otherwise check for AI Studio integration
       if (window.aistudio && await window.aistudio.hasSelectedApiKey()) {
         setIsKeySelected(true);
       } else {
@@ -120,6 +127,7 @@ const App: React.FC = () => {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_API_KEY });
       const prompt = `Animate the provided image of a person's face to realistically speak the following line: "${inputText.trim()}". Ensure natural lip, mouth, and jaw movements that precisely match the dialogue audio. Do not have whole head movemements, bobbing, nodding, or shaking. The expression should be polite and casual, and the background should remain consistent with the original image. The animation should be smooth and lifelike. The video must end immediately after the character is done speaking.`;
       
       const imagePayload = {
