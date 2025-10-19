@@ -1,20 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# hackathon
+HackTX Hackathon
 
-# Run and deploy your AI Studio app
+SpeakQuest: A Choose-Your-Own Speech Adventure 🎤🎬
 
-This contains everything you need to run your app locally.
+**SpeakQuest** is an AI assisted speech therapy application designed for people with speech disorders such as Apraxia.
+It turns regular speech practice into a more interactive, fun, and story driven adventure using AI generated videos and visual feedback.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1XJG32bFIsTy-ed-q2Qfd7-Cn1E7NeYWj
+---
 
-## Run Locally
-
-**Prerequisites:**  Node.js
+## 🌟 Features
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+---
+
+## 🎮 How It Works
+
+
+---
+
+## 🖥️ Tech Stack
+
+---
+## 🚀 Installation / Setup
+
