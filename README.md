@@ -34,7 +34,7 @@ We gained hands-on experience integrating Gemini Veo for video generation and El
 
 ---
 
-## What's next for tbd
+## What's next
 We plan to gamify the UI into a choose-your-own-adventure experience, letting users explore different environments and social situations while practicing pronunciation of words. Future features include real-time pronunciation feedback, interactive mini-games, and progress tracking to visualize improvement. Users will also be able to select different AI voices and accents, making the experience immersive, engaging, and context-driven.
 
 ---
